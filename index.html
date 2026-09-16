@@ -1,0 +1,524 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Chess Super Brain</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #111827;
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+header {
+    text-align: center;
+    padding: 18px;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 28px;
+}
+
+header p {
+    margin: 6px 0 0;
+    color: #9ca3af;
+}
+
+.container {
+    width: min(1100px, 95vw);
+    margin: auto;
+    display: flex;
+    gap: 25px;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.game-area {
+    display: flex;
+    gap: 12px;
+}
+
+/* Evaluation bar */
+
+.eval-bar {
+    width: 32px;
+    height: min(80vw, 560px);
+    max-height: 560px;
+    background: #222;
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+    border: 2px solid #374151;
+}
+
+.eval-white {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 50%;
+    background: white;
+    transition: height 0.5s ease;
+}
+
+.eval-black {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    height: 50%;
+    background: #111;
+}
+
+.eval-number {
+    position: absolute;
+    left: 38px;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* Chess board */
+
+#board {
+    width: min(80vw, 560px);
+    aspect-ratio: 1 / 1;
+
+    display: grid;
+
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+
+    border: 5px solid #374151;
+}
+
+.square {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    font-size: clamp(25px, 8vw, 58px);
+
+    cursor: pointer;
+    user-select: none;
+}
+
+.light {
+    background: #f0d9b5;
+}
+
+.dark {
+    background: #b58863;
+}
+
+.selected {
+    outline: 5px solid #facc15;
+    outline-offset: -5px;
+}
+
+.last-move {
+    box-shadow: inset 0 0 0 5px rgba(250, 204, 21, 0.5);
+}
+
+/* Coach panel */
+
+.panel {
+    width: 340px;
+    background: #1f2937;
+    border-radius: 10px;
+    padding: 18px;
+}
+
+.panel h2 {
+    margin-top: 0;
+}
+
+.status {
+    background: #111827;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.coach {
+    background: #111827;
+    padding: 15px;
+    border-radius: 8px;
+    line-height: 1.5;
+    min-height: 150px;
+}
+
+.best-move {
+    font-size: 22px;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    margin-top: 15px;
+
+    border: none;
+    border-radius: 7px;
+
+    background: #2563eb;
+    color: white;
+
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #1d4ed8;
+}
+
+@media (max-width: 850px) {
+
+    .container {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .panel {
+        width: min(90vw, 560px);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>♟ Chess Super Brain</h1>
+    <p>Stockfish + Chess Coach</p>
+</header>
+
+<div class="container">
+
+    <div class="game-area">
+
+        <div class="eval-bar">
+
+            <div id="evalBlack"
+                 class="eval-black"></div>
+
+            <div id="evalWhite"
+                 class="eval-white"></div>
+
+            <div id="evalNumber"
+                 class="eval-number">
+                0.00
+            </div>
+
+        </div>
+
+        <div id="board"></div>
+
+    </div>
+
+    <div class="panel">
+
+        <div class="status">
+            <strong>Status</strong>
+
+            <div id="status">
+                Your move
+            </div>
+        </div>
+
+        <h2>🧠 Chess Coach</h2>
+
+        <div class="best-move">
+            Best Move:
+            <span id="bestMove">—</span>
+        </div>
+
+        <div class="coach" id="coach">
+
+            Make your first move.
+
+            <br><br>
+
+            I will explain:
+
+            <ul>
+                <li>Why the engine likes the move</li>
+                <li>What your move changed</li>
+                <li>Tactical opportunities</li>
+                <li>King safety</li>
+                <li>Material changes</li>
+            </ul>
+
+        </div>
+
+        <button onclick="newGame()">
+            New Game
+        </button>
+
+    </div>
+
+</div>
+
+<script>
+
+const game = new Chess();
+
+const boardElement =
+    document.getElementById("board");
+
+const statusElement =
+    document.getElementById("status");
+
+const coachElement =
+    document.getElementById("coach");
+
+const bestMoveElement =
+    document.getElementById("bestMove");
+
+const evalNumberElement =
+    document.getElementById("evalNumber");
+
+const evalWhiteElement =
+    document.getElementById("evalWhite");
+
+let selectedSquare = null;
+
+let lastMove = null;
+
+const pieces = {
+
+    w: {
+        k: "♔",
+        q: "♕",
+        r: "♖",
+        b: "♗",
+        n: "♘",
+        p: "♙"
+    },
+
+    b: {
+        k: "♚",
+        q: "♛",
+        r: "♜",
+        b: "♝",
+        n: "♞",
+        p: "♟"
+    }
+
+};
+
+function drawBoard() {
+
+    boardElement.innerHTML = "";
+
+    const board = game.board();
+
+    for (let row = 0; row < 8; row++) {
+
+        for (let col = 0; col < 8; col++) {
+
+            const square =
+                document.createElement("div");
+
+            square.className =
+                "square " +
+                ((row + col) % 2 === 0
+                    ? "light"
+                    : "dark");
+
+            const file =
+                String.fromCharCode(97 + col);
+
+            const rank = 8 - row;
+
+            const name =
+                file + rank;
+
+            const piece =
+                board[row][col];
+
+            if (piece) {
+
+                square.textContent =
+                    pieces[piece.color][piece.type];
+
+            }
+
+            if (selectedSquare === name) {
+
+                square.classList.add("selected");
+
+            }
+
+            if (lastMove &&
+                (lastMove.from === name ||
+                 lastMove.to === name)) {
+
+                square.classList.add("last-move");
+
+            }
+
+            square.onclick = function() {
+
+                squareClicked(name);
+
+            };
+
+            boardElement.appendChild(square);
+        }
+    }
+}
+
+function squareClicked(square) {
+
+    if (game.turn() !== "w") return;
+
+    if (!selectedSquare) {
+
+        const piece =
+            game.get(square);
+
+        if (piece &&
+            piece.color === "w") {
+
+            selectedSquare = square;
+
+            drawBoard();
+        }
+
+        return;
+    }
+
+    const move =
+        game.move({
+
+            from: selectedSquare,
+
+            to: square,
+
+            promotion: "q"
+
+        });
+
+    if (move) {
+
+        lastMove = move;
+
+        selectedSquare = null;
+
+        drawBoard();
+
+        statusElement.textContent =
+            "Move played: " +
+            move.san;
+
+        coachElement.innerHTML =
+            "<strong>Your move:</strong> " +
+            move.san +
+            "<br><br>" +
+            "Stockfish analysis will appear here.";
+
+        if (game.game_over()) {
+
+            statusElement.textContent =
+                "Game Over";
+
+            return;
+        }
+
+        // Temporary response.
+        // Stockfish will replace this later.
+
+        setTimeout(function() {
+
+            const moves =
+                game.moves();
+
+            if (moves.length === 0) return;
+
+            const randomMove =
+                moves[Math.floor(
+                    Math.random() * moves.length
+                )];
+
+            const computerMove =
+                game.move(randomMove);
+
+            lastMove = computerMove;
+
+            drawBoard();
+
+            statusElement.textContent =
+                "Your move";
+
+        }, 500);
+    }
+
+    else {
+
+        const piece =
+            game.get(square);
+
+        if (piece &&
+            piece.color === "w") {
+
+            selectedSquare = square;
+
+        } else {
+
+            selectedSquare = null;
+
+        }
+
+        drawBoard();
+    }
+}
+
+function newGame() {
+
+    game.reset();
+
+    selectedSquare = null;
+
+    lastMove = null;
+
+    evalWhiteElement.style.height =
+        "50%";
+
+    evalNumberElement.textContent =
+        "0.00";
+
+    bestMoveElement.textContent =
+        "—";
+
+    statusElement.textContent =
+        "Your move";
+
+    coachElement.innerHTML =
+        "Make your first move.<br><br>" +
+        "Stockfish will analyze it and " +
+        "the Chess Coach will explain the position.";
+
+    drawBoard();
+}
+
+drawBoard();
+
+</script>
+
+</body>
+</html>
+```
